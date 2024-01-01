@@ -34,6 +34,8 @@ fileprivate class BluetoothControlThread : Thread {
                 communication.write(string: line)
             } else if (line.starts(with: "r")) {
                 communication.read()
+            } else if (line.starts(with: "W")) {
+                communication.waitForResponse()
             }
         }
         print("Stopping control thread...")
@@ -46,7 +48,7 @@ fileprivate class BluetoothControlThread : Thread {
 }
 
 fileprivate class BluetoothInfo {
-    let mutex = NSLock()
+    let mutex = NSCondition()
     let channel : IOBluetoothRFCOMMChannel
     var message : String = ""
     var receivedData : [String] = [];
@@ -69,6 +71,7 @@ fileprivate class BluetoothRFCOMMDelegate: NSObject, IOBluetoothRFCOMMChannelDel
         let data = Data(bytes: dataPointer, count: Int(dataLength))
         let str = String(data: data, encoding: String.Encoding.utf8)
         contextInfo.receivedData.append(str!)
+        contextInfo.mutex.signal()
         contextInfo.mutex.unlock()
     }
     
@@ -122,13 +125,27 @@ class BluetoothCommunication {
         CFRunLoopWakeUp(CFRunLoopGetMain())
     }
     
-    fileprivate func read() -> Void {
-        contextInfo.mutex.lock()
+    fileprivate func printMessagesUnsafe() -> Void {
         print("Received messages:")
         for msg in contextInfo.receivedData {
-            print("    -\(msg)")
+            print("    * \(msg)")
         }
         contextInfo.receivedData.removeAll()
+    }
+    
+    fileprivate func read() -> Void {
+        contextInfo.mutex.lock()
+        printMessagesUnsafe()
+        contextInfo.receivedData.removeAll()
+        contextInfo.mutex.unlock()
+    }
+    
+    fileprivate func waitForResponse() -> Void {
+        contextInfo.mutex.lock()
+        while(contextInfo.receivedData.count == 0) {
+            contextInfo.mutex.wait()
+        }
+        printMessagesUnsafe()
         contextInfo.mutex.unlock()
     }
     
@@ -137,5 +154,7 @@ class BluetoothCommunication {
         CFRunLoopRemoveSource(CFRunLoopGetMain(), writeSource, CFRunLoopMode.defaultMode)
         writeSource = nil
         writeContext = nil
+        channel.close()
+        channel.getDevice().closeConnection()
     }
 }
