@@ -109,6 +109,8 @@ fileprivate class BluetoothControlThread : Thread {
                 let duration = UInt8(values[2])
                 let speed = UInt8(values[3])
                 communication.move(direction: dir!, duration: duration!, speed: speed!)
+                communication.waitForAcks()
+                print("Command executed")
             default:
                 print("Unknown command!")
             }
@@ -214,25 +216,33 @@ class BluetoothCommunication {
         case .right:
             command = format(request: 0, type: 1, dir: 1, duration: duration, value: speed)
         }
+        command.append(0xAA)
         write(data: command)
     }
     
-    fileprivate func waitForAck(type: Bool) -> Void {
+    fileprivate func waitForAcks() -> Void {
         var done = false
         while (!done) {
+            defer {
+                contextInfo.mutex.unlock()
+                if (!done) {
+                    Thread.sleep(forTimeInterval: 1)
+                }
+            }
             contextInfo.mutex.lock()
             while(contextInfo.receivedData.count == 0) {
                 contextInfo.mutex.wait()
             }
-            let expectedAck : UInt8 = type ? 0x55 : 0xAA
+            var recvAck = false
+            var doneAck = false
             for msg in contextInfo.receivedData {
-                if msg[0] == expectedAck {
-                    done = true
-                    break
-                }
+                recvAck = recvAck || msg.contains() {$0 == 0x55}
+                doneAck = doneAck || msg.contains() {$0 == 0xAA}
             }
-            contextInfo.receivedData.removeAll()
-            contextInfo.mutex.unlock()
+            done = recvAck && doneAck
+            if (done) {
+                contextInfo.receivedData.removeAll()
+            }
         }
     }
     

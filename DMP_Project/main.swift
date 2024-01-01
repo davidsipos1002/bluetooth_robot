@@ -23,7 +23,8 @@ func main() -> Void
         communication.start()
         CFRunLoopRun()
         communication.end()
-   }
+    }
+    print("Ending program...")
 }
 
 main()
