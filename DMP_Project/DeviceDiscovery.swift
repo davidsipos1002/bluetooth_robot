@@ -10,7 +10,7 @@ import IOBluetooth
 
 fileprivate class DeviceDiscoveryDelegate: NSObject, IOBluetoothDeviceInquiryDelegate {
     func deviceInquiryDeviceFound(_ sender: IOBluetoothDeviceInquiry!, device: IOBluetoothDevice!) {
-        print("Device found with address: \(device.addressString ?? "nil")")
+        print("Device found with address: \(device.addressString!).")
     }
 }
 
@@ -33,18 +33,19 @@ final class DeviceDiscovery
     }
     
     func startDiscovery() -> IOBluetoothRFCOMMChannel! {
-        print("Starting device discovery...")
-        print("Timeout is \(searchTime)s")
+        print("Starting device discovery. Timeout is \(searchTime)s.")
         let inquiryDelegate = DeviceDiscoveryDelegate()
         let deviceInquiry: IOBluetoothDeviceInquiry! = IOBluetoothDeviceInquiry(delegate: inquiryDelegate)
-        let timer = CFRunLoopTimerCreate(kCFAllocatorDefault, Date().timeIntervalSinceReferenceDate + Double(searchTime), 0, 0, 0, { timer, info in
+        var timer = CFRunLoopTimerCreate(kCFAllocatorDefault, Date().timeIntervalSinceReferenceDate + Double(searchTime), 0, 0, 0, { timer, info in
             CFRunLoopStop(CFRunLoopGetCurrent())
         }, nil)
         CFRunLoopAddTimer(CFRunLoopGetCurrent(), timer, CFRunLoopMode.defaultMode)
         deviceInquiry.start()
         CFRunLoopRun()
         deviceInquiry.stop()
-        print("Discovery finished")
+        CFRunLoopRemoveTimer(CFRunLoopGetCurrent(), timer, CFRunLoopMode.defaultMode)
+        timer = nil
+        print("Discovery finished.")
         print("Found devices:")
         let foundDevices = deviceInquiry.foundDevices()
         var deviceToConnect : IOBluetoothDevice?
@@ -62,13 +63,13 @@ final class DeviceDiscovery
             } else {
                 while(device.getLastServicesUpdate().compare(Date()) != .orderedAscending) {
                 }
-                print("Supported services")
+                print("   Supported services:")
                 for service in device.services! {
                     let serviceRecord = service as! IOBluetoothSDPServiceRecord
-                    print(serviceRecord.getServiceName() ?? "Unnamed Service")
+                    print("      \(serviceRecord.getServiceName() ?? "Unnamed Service")")
                     var rfcommChannelID : BluetoothRFCOMMChannelID = 0
                     if (serviceRecord.getRFCOMMChannelID(&rfcommChannelID) == kIOReturnSuccess) {
-                        print("Found RFCOMM channel with ID: \(rfcommChannelID)")
+                        print("           Found RFCOMM channel with ID: \(rfcommChannelID)")
                     }
                 }
                 if (device.name! == deviceName) {
@@ -76,15 +77,17 @@ final class DeviceDiscovery
                 }
             }
         }
+        print("")
         var rfcommChannel : IOBluetoothRFCOMMChannel?
         if (deviceToConnect != nil) {
-            print("Device \(deviceName) found. Enter RFCOMM channel id to open connection: ", terminator: "")
+            print("Device \(deviceName) found. Enter RFCOMM channel ID to open connection: ", terminator: "")
             let id : BluetoothRFCOMMChannelID! = UInt8(readLine()!)
             if (deviceToConnect!.openConnection() == kIOReturnSuccess) {
                 if (deviceToConnect!.openRFCOMMChannelSync(&rfcommChannel, withChannelID: id, delegate: NSObject()) == kIOReturnSuccess) {
                     if (rfcommChannel!.setSerialParameters(baudRate, dataBits: byteSize, parity: parity, stopBits: stopBits) == kIOReturnSuccess) {
+                        print("Connection established.")
                     } else {
-                        print("Failed to set channel parameters")
+                        print("Failed to set channel parameters!")
                         rfcommChannel!.close()
                         rfcommChannel = nil
                     }
@@ -96,7 +99,7 @@ final class DeviceDiscovery
                     rfcommChannel = nil
                 }
             } else {
-                print("Could not open connection")
+                print("Could not open connection!")
             }
         }
         return rfcommChannel
