@@ -8,45 +8,6 @@
 import Foundation
 import IOBluetooth
 
-fileprivate class BluetoothControlThread : Thread {
-    private let waiter = DispatchGroup()
-    private weak var communication : BluetoothCommunication!
-    
-    init(communication: BluetoothCommunication) {
-        super.init()
-        self.communication = communication
-    }
-    
-    override func start() -> Void {
-        waiter.enter()
-        super.start()
-    }
-    
-    override func main() -> Void {
-        var line : String!
-        while(true) {
-            line = readLine()
-            if (line == "s") {
-                CFRunLoopStop(CFRunLoopGetMain())
-                break
-            } else if (line.starts(with: "w")) {
-                line.removeFirst(2)
-                communication.write(data: Array(line!.utf8))
-            } else if (line.starts(with: "r")) {
-                communication.read()
-            } else if (line.starts(with: "W")) {
-                communication.waitForResponse()
-            }
-        }
-        print("Stopping control thread...")
-        waiter.leave()
-    }
-    
-    func join() -> Void {
-        waiter.wait()
-    }
-}
-
 fileprivate class BluetoothInfo {
     let mutex = NSCondition()
     let channel : IOBluetoothRFCOMMChannel
@@ -76,6 +37,49 @@ fileprivate class BluetoothRFCOMMDelegate: NSObject, IOBluetoothRFCOMMChannelDel
         contextInfo.receivedData.append(charArray)
         contextInfo.mutex.signal()
         contextInfo.mutex.unlock()
+    }
+}
+
+fileprivate class BluetoothControlThread : Thread {
+    private let waiter = DispatchGroup()
+    private weak var communication : BluetoothCommunication!
+    
+    init(communication: BluetoothCommunication) {
+        super.init()
+        self.communication = communication
+    }
+    
+    override func start() -> Void {
+        waiter.enter()
+        super.start()
+    }
+    
+    override func main() -> Void {
+        var line : String!
+        while(true) {
+            line = readLine()
+            if (line == "s") {
+                CFRunLoopStop(CFRunLoopGetMain())
+                break
+            } else if (line.starts(with: "w")) {
+                line.removeFirst(2)
+                communication.write(data: Array(line!.utf8))
+            } else if (line.starts(with: "r")) {
+                communication.read()
+            } else if (line.starts(with: "W")) {
+                communication.waitForResponse()
+            } else if (line.starts(with: "rs")) {
+                communication.read(true)
+            } else if (line.starts(with: "Ws")) {
+                communication.waitForResponse(true)
+            }
+        }
+        print("Stopping control thread...")
+        waiter.leave()
+    }
+    
+    func join() -> Void {
+        waiter.wait()
     }
 }
 
@@ -122,28 +126,36 @@ class BluetoothCommunication {
         CFRunLoopWakeUp(CFRunLoopGetMain())
     }
     
-    fileprivate func printMessagesUnsafe() -> Void {
+    fileprivate func printMessagesUnsafe(_ printAsString: Bool) -> Void {
         print("Received messages:")
         for msg in contextInfo.receivedData {
-            print("    * \(msg)")
+            if (printAsString) {
+                print("    * \(String(bytes: msg, encoding: String.Encoding.ascii)!)")
+            } else {
+                print("    * \(msg)")
+            }
         }
         contextInfo.receivedData.removeAll()
     }
     
-    fileprivate func read() -> Void {
+    fileprivate func read(_ printAsString: Bool = false) -> Void {
         contextInfo.mutex.lock()
-        printMessagesUnsafe()
+        printMessagesUnsafe(printAsString)
         contextInfo.receivedData.removeAll()
         contextInfo.mutex.unlock()
     }
     
-    fileprivate func waitForResponse() -> Void {
+    fileprivate func waitForResponse(_ printAsString: Bool = false) -> Void {
         contextInfo.mutex.lock()
         while(contextInfo.receivedData.count == 0) {
             contextInfo.mutex.wait()
         }
-        printMessagesUnsafe()
+        printMessagesUnsafe(printAsString)
         contextInfo.mutex.unlock()
+    }
+    
+    func move() -> Void {
+        
     }
     
     func end() -> Void {
