@@ -16,12 +16,12 @@ fileprivate class DeviceDiscoveryDelegate: NSObject, IOBluetoothDeviceInquiryDel
 
 final class DeviceDiscovery
 {
-    let deviceName: String;
-    let searchTime: Int;
-    let baudRate: UInt32;
-    let byteSize: UInt8;
-    let parity: BluetoothRFCOMMParityType;
-    let stopBits: UInt8;
+    let deviceName: String
+    let searchTime: Int
+    let baudRate: UInt32
+    let byteSize: UInt8
+    let parity: BluetoothRFCOMMParityType
+    let stopBits: UInt8
     
     init(deviceName: String, searchTime: Int, baudRate: UInt32, byteSize: UInt8, parity: BluetoothRFCOMMParityType, stopBits: UInt8) {
         self.deviceName = deviceName

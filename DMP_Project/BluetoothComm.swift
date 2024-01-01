@@ -8,6 +8,28 @@
 import Foundation
 import IOBluetooth
 
+fileprivate enum Direction {
+    case forward
+    case backward
+    case left
+    case right
+   
+    static func convertToDirection(fromString str: String) -> Direction? {
+        switch str {
+        case "f":
+            return .forward
+        case "b":
+            return .backward
+        case "l":
+            return .left
+        case "r":
+            return .right
+        default:
+            return nil
+        }
+    }
+}
+
 fileprivate class BluetoothInfo {
     let mutex = NSCondition()
     let channel : IOBluetoothRFCOMMChannel
@@ -55,29 +77,40 @@ fileprivate class BluetoothControlThread : Thread {
     }
     
     override func main() -> Void {
-        var line : String!
+    inloop: 
         while(true) {
-            line = readLine()
-            line.replace(" ", with: "")
-            if (line == "s") {
+            let values = readLine()!.components(separatedBy: CharacterSet.whitespacesAndNewlines)
+            if (values.count == 0) {
+                continue
+            }
+            switch values[0] {
+            case "s":
                 CFRunLoopStop(CFRunLoopGetMain())
-                break
-            } else if (line.starts(with: "rs")) {
-                communication.read(true)
-            } else if (line.starts(with: "r")) {
+                break inloop
+            case "rb":
                 communication.read()
-            } else if (line.starts(with: "Ws")) {
-                communication.waitForResponse(true)
-            } else if (line.starts(with: "W")) {
+            case "rs":
+                communication.read(true)
+            case "Wb":
                 communication.waitForResponse()
-            } else if (line.starts(with: "wb")) {
-                line.removeFirst(2)
-                line = line.lowercased()
-                line = line.replacing("0x", with: "")
-                communication.write(data: [UInt8(line, radix: 16)!])
-            } else if (line.starts(with: "ws")) {
-                line.removeFirst(2)
-                communication.write(data: Array(line!.utf8))
+            case "Ws":
+                communication.waitForResponse(true)
+            case "wb":
+                let hexString = values[1].lowercased().replacing("0x", with: "")
+                communication.write(data: [UInt8(hexString, radix: 16)!])
+            case "ws":
+                communication.write(data: Array(values[1].utf8))
+            case "m":
+                if (values.count < 4) {
+                    print("Invalid move command!")
+                    break
+                }
+                let dir = Direction.convertToDirection(fromString: values[1])
+                let duration = UInt8(values[2])
+                let speed = UInt8(values[3])
+                communication.move(direction: dir!, duration: duration!, speed: speed!)
+            default:
+                print("Unknown command!")
             }
         }
         print("Stopping control thread...")
@@ -160,8 +193,47 @@ class BluetoothCommunication {
         contextInfo.mutex.unlock()
     }
     
-    func move() -> Void {
-        
+    private func format(request: UInt8, type: UInt8, dir: UInt8, duration: UInt8, value: UInt8) -> [UInt8] {
+        var controlByte : UInt8 = 0
+        controlByte |= request << 7
+        controlByte |= type << 5
+        controlByte |= dir << 4
+        controlByte |= duration & 0x0F
+        return [controlByte, value]
+    }
+    
+    fileprivate func move(direction: Direction, duration: UInt8, speed: UInt8) -> Void {
+        var command : [UInt8] = []
+        switch direction {
+        case .forward:
+            command = format(request: 0, type: 0, dir: 0, duration: duration, value: speed)
+        case .backward:
+            command = format(request: 0, type: 0, dir: 1, duration: duration, value: speed)
+        case .left:
+            command = format(request: 0, type: 1, dir: 0, duration: duration, value: speed)
+        case .right:
+            command = format(request: 0, type: 1, dir: 1, duration: duration, value: speed)
+        }
+        write(data: command)
+    }
+    
+    fileprivate func waitForAck(type: Bool) -> Void {
+        var done = false
+        while (!done) {
+            contextInfo.mutex.lock()
+            while(contextInfo.receivedData.count == 0) {
+                contextInfo.mutex.wait()
+            }
+            let expectedAck : UInt8 = type ? 0x55 : 0xAA
+            for msg in contextInfo.receivedData {
+                if msg[0] == expectedAck {
+                    done = true
+                    break
+                }
+            }
+            contextInfo.receivedData.removeAll()
+            contextInfo.mutex.unlock()
+        }
     }
     
     func end() -> Void {
