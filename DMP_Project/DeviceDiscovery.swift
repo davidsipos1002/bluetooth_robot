@@ -57,22 +57,22 @@ final class DeviceDiscovery
             }
             print("")
             print("Device name: \(device.name!)")
-            if (device.performSDPQuery(nil) != kIOReturnSuccess) {
-                print("Could not perform SDP query. Ignoring device.")
-                continue
-            } else {
-                while(device.getLastServicesUpdate().compare(Date()) != .orderedAscending) {
-                }
-                print("   Supported services:")
-                for service in device.services! {
-                    let serviceRecord = service as! IOBluetoothSDPServiceRecord
-                    print("      \(serviceRecord.getServiceName() ?? "Unnamed Service")")
-                    var rfcommChannelID : BluetoothRFCOMMChannelID = 0
-                    if (serviceRecord.getRFCOMMChannelID(&rfcommChannelID) == kIOReturnSuccess) {
-                        print("           Found RFCOMM channel with ID: \(rfcommChannelID)")
+            if (device.name! == deviceName) {
+                if (device.performSDPQuery(nil) != kIOReturnSuccess) {
+                    print("Could not perform SDP query. Ignoring device.")
+                    continue
+                } else {
+                    while(device.getLastServicesUpdate().compare(Date()) != .orderedAscending) {
                     }
-                }
-                if (device.name! == deviceName) {
+                    print("   Supported services:")
+                    for service in device.services! {
+                        let serviceRecord = service as! IOBluetoothSDPServiceRecord
+                        print("      \(serviceRecord.getServiceName() ?? "Unnamed Service")")
+                        var rfcommChannelID : BluetoothRFCOMMChannelID = 0
+                        if (serviceRecord.getRFCOMMChannelID(&rfcommChannelID) == kIOReturnSuccess) {
+                            print("           Found RFCOMM channel with ID: \(rfcommChannelID)")
+                        }
+                    }
                     deviceToConnect = device
                 }
             }
