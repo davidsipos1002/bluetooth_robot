@@ -58,20 +58,26 @@ fileprivate class BluetoothControlThread : Thread {
         var line : String!
         while(true) {
             line = readLine()
+            line.replace(" ", with: "")
             if (line == "s") {
                 CFRunLoopStop(CFRunLoopGetMain())
                 break
-            } else if (line.starts(with: "w")) {
-                line.removeFirst(2)
-                communication.write(data: Array(line!.utf8))
-            } else if (line.starts(with: "r")) {
-                communication.read()
-            } else if (line.starts(with: "W")) {
-                communication.waitForResponse()
             } else if (line.starts(with: "rs")) {
                 communication.read(true)
+            } else if (line.starts(with: "r")) {
+                communication.read()
             } else if (line.starts(with: "Ws")) {
                 communication.waitForResponse(true)
+            } else if (line.starts(with: "W")) {
+                communication.waitForResponse()
+            } else if (line.starts(with: "wb")) {
+                line.removeFirst(2)
+                line = line.lowercased()
+                line = line.replacing("0x", with: "")
+                communication.write(data: [UInt8(line, radix: 16)!])
+            } else if (line.starts(with: "ws")) {
+                line.removeFirst(2)
+                communication.write(data: Array(line!.utf8))
             }
         }
         print("Stopping control thread...")

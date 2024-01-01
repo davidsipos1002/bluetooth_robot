@@ -23,7 +23,7 @@ func main() -> Void
         communication.start()
         CFRunLoopRun()
         communication.end()
-    }
+   }
 }
 
 main()
