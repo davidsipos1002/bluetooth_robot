@@ -31,7 +31,7 @@ fileprivate class BluetoothControlThread : Thread {
                 break
             } else if (line.starts(with: "w")) {
                 line.removeFirst(2)
-                communication.write(string: line)
+                communication.write(data: Array(line!.utf8))
             } else if (line.starts(with: "r")) {
                 communication.read()
             } else if (line.starts(with: "W")) {
@@ -50,8 +50,8 @@ fileprivate class BluetoothControlThread : Thread {
 fileprivate class BluetoothInfo {
     let mutex = NSCondition()
     let channel : IOBluetoothRFCOMMChannel
-    var message : String = ""
-    var receivedData : [String] = [];
+    var message : [UInt8] = []
+    var receivedData : [[UInt8]] = []
     
     init(channel: IOBluetoothRFCOMMChannel) {
         self.channel = channel
@@ -68,15 +68,14 @@ fileprivate class BluetoothRFCOMMDelegate: NSObject, IOBluetoothRFCOMMChannelDel
     
     func rfcommChannelData(_ rfcommChannel: IOBluetoothRFCOMMChannel!, data dataPointer: UnsafeMutableRawPointer!, length dataLength: Int) {
         contextInfo.mutex.lock()
-        let data = Data(bytes: dataPointer, count: Int(dataLength))
-        let str = String(data: data, encoding: String.Encoding.utf8)
-        contextInfo.receivedData.append(str!)
+        let start : UnsafeMutablePointer<UInt8> = dataPointer.bindMemory(to: UInt8.self, capacity: dataLength)
+        let charArray = Array<UInt8>(unsafeUninitializedCapacity: dataLength) { buffer, initializedCount in
+            initializedCount = dataLength
+            _ = buffer.moveUpdate(fromContentsOf: UnsafeMutableBufferPointer(start: start, count: dataLength))
+        }
+        contextInfo.receivedData.append(charArray)
         contextInfo.mutex.signal()
         contextInfo.mutex.unlock()
-    }
-    
-    func rfcommChannelWriteComplete(_ rfcommChannel: IOBluetoothRFCOMMChannel!, refcon: UnsafeMutableRawPointer!, status error: IOReturn) {
-        print("Write done")
     }
 }
 
@@ -104,9 +103,7 @@ class BluetoothCommunication {
         writeContext = CFRunLoopSourceContext(version: 0, info: getUnsafeMutablePointer(to: &contextInfo), retain: nil, release: nil, copyDescription: nil, equal: nil, hash: nil, schedule: nil, cancel: nil, perform: { info in
             let bluetoothInfo = (info!.bindMemory(to: BluetoothInfo.self, capacity: 1)).pointee
             bluetoothInfo.mutex.lock()
-            var charArray = Array(bluetoothInfo.message.utf8)
-            charArray.append(0)
-            let ptr = charArray.withUnsafeMutableBytes {$0.baseAddress}
+            let ptr = bluetoothInfo.message.withUnsafeMutableBytes {$0.baseAddress}
             bluetoothInfo.channel.writeAsync(ptr, length: UInt16(bluetoothInfo.message.count), refcon: nil)
             bluetoothInfo.mutex.unlock()
         })
@@ -117,9 +114,9 @@ class BluetoothCommunication {
     }
     
 
-    fileprivate func write(string: String) -> Void {
+    fileprivate func write(data: [UInt8]) -> Void {
         contextInfo.mutex.lock()
-        contextInfo.message = string
+        contextInfo.message = data
         contextInfo.mutex.unlock()
         CFRunLoopSourceSignal(writeSource)
         CFRunLoopWakeUp(CFRunLoopGetMain())
