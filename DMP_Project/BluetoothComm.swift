@@ -118,6 +118,28 @@ fileprivate class BluetoothControlThread : Thread {
                     communication.move(direction: dir!, duration: duration!, speed: speed!)
                     communication.waitForAcks()
                     print("Command executed")
+                case "sr":
+                    if (values.count < 2) {
+                        print("Invalid servo command")
+                    }
+                    let amount = Int16(values[1])
+                    if (amount == nil) {
+                        print("Invalid amount")
+                        break
+                    }
+                    communication.servo(amount: amount!)
+                    communication.waitForAcks()
+                    print("Command executed")
+                case "d":
+                    communication.distance()
+                    communication.waitForAcks()
+                    print("Command executed")
+                    let dist = communication.getReponseAsFloat()
+                    if let d = dist {
+                        print("Received: \(d)")
+                    } else {
+                        print("Received invalid float")
+                    }
                 default:
                     print("Unknown command!")
                 }
@@ -267,7 +289,7 @@ class BluetoothCommunication {
         write(data: request)
     }
     
-    fileprivate func waitForAcks() {
+    fileprivate func waitForAcks() -> Void {
         var done = false
         while (!done) {
             defer {
@@ -299,6 +321,20 @@ class BluetoothCommunication {
                 contextInfo.receivedData.removeAll()
             }
         }
+    }
+    
+    fileprivate func getReponseAsFloat() -> Float? {
+        guard (contextInfo.response.count >= 4) else {
+            return nil
+        }
+        let bitPattern = contextInfo.response.withUnsafeBytes { ptr in
+            var ret : UInt32 = 0
+            for i in 0..<4 {
+                ret |= UInt32(ptr.load(fromByteOffset: i, as: UInt8.self)) << (8 * i)
+            }
+            return ret
+        }
+        return Float(bitPattern: bitPattern)
     }
     
     func end() -> Void {

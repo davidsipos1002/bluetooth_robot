@@ -11,7 +11,7 @@ import IOBluetooth
 func main() -> Void
 {
     print("Controller search timeout: ", terminator: "")
-    let timeout = Double(readLine()!)
+    let timeout = Int(readLine()!)
     print("Waiting for controller. Timeout is \(timeout!)s.")
     let controllerManager = ControllerManager()
     let controllerFound = controllerManager.waitForController(timeout!)

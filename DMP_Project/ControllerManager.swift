@@ -101,9 +101,9 @@ class ControllerManager {
         CFRunLoopAddTimer(CFRunLoopGetCurrent(), timer, CFRunLoopMode.defaultMode)
     }
     
-    func waitForController(_ timeout: Double) -> Bool {
+    func waitForController(_ timeout: Int) -> Bool {
         NotificationCenter.default.addObserver(observer!, selector: #selector(ControllerConnectionObserver.controllerConnected), name: NSNotification.Name.GCControllerDidConnect, object: nil)
-        setTimeoutTimer(timeout)
+        setTimeoutTimer(Double(timeout))
         CFRunLoopRun()
         CFRunLoopRemoveTimer(CFRunLoopGetCurrent(), timer, CFRunLoopMode.defaultMode)
         NotificationCenter.default.removeObserver(observer!, name: NSNotification.Name.GCControllerDidConnect, object: nil)
