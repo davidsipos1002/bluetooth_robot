@@ -23,7 +23,7 @@ fileprivate class ControllerConnectionObserver {
     
     @objc func controllerDisconnected(notification: NSNotification) -> Void {
         print("Controller disconnected. Stopping program...")
-        exit(1)
+        exit(EXIT_FAILURE)
     }
 }
 
@@ -127,7 +127,9 @@ class ControllerManager {
     }
     
     func setLightColor(red: Float, green: Float, blue: Float) -> Void {
-        controller.light!.color = GCColor(red: red, green: green, blue: blue)
+        if (controller != nil) {
+            controller.light!.color = GCColor(red: red, green: green, blue: blue)
+        }
     }
     
     private func handleChange(gamepad: GCExtendedGamepad, element: GCControllerElement) -> Void {

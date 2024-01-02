@@ -35,6 +35,7 @@ fileprivate class BluetoothInfo {
     let channel : IOBluetoothRFCOMMChannel
     var message : [UInt8] = []
     var receivedData : [[UInt8]] = []
+    var response : [UInt8] = []
     
     init(channel: IOBluetoothRFCOMMChannel) {
         self.channel = channel
@@ -47,6 +48,11 @@ fileprivate class BluetoothRFCOMMDelegate: NSObject, IOBluetoothRFCOMMChannelDel
     
     init(contextInfo: BluetoothInfo!) {
         self.contextInfo = contextInfo
+    }
+    
+    func rfcommChannelClosed(_ rfcommChannel: IOBluetoothRFCOMMChannel!) {
+        print("Lost connection! Exiting...")
+        exit(EXIT_FAILURE)
     }
     
     func rfcommChannelData(_ rfcommChannel: IOBluetoothRFCOMMChannel!, data dataPointer: UnsafeMutableRawPointer!, length dataLength: Int) {
@@ -116,27 +122,26 @@ fileprivate class BluetoothControlThread : Thread {
                     print("Unknown command!")
                 }
             } else {
-                var speed = UInt8(communication.controllerManager!.controllerState.leftTrigger * 255)
-                if (communication.controllerManager!.controllerState.buttonX) {
-                    communication.move(direction: Direction.backward, duration: 10, speed: speed)
-                    communication.waitForAcks()
-                } else if (communication.controllerManager!.controllerState.buttonTriangle) {
-                    communication.move(direction: Direction.forward, duration: 10, speed: speed)
-                    communication.waitForAcks()
-                } else if (communication.controllerManager!.controllerState.buttonSquare) {
-                    communication.move(direction: Direction.left, duration: 10, speed: speed)
-                    communication.waitForAcks()
-                } else if (communication.controllerManager!.controllerState.buttonCircle) {
-                    communication.move(direction: Direction.right, duration: 10, speed: speed)
-                    communication.waitForAcks()
-                } else if (communication.controllerManager!.controllerState.buttonPlayStation) {
+               if (communication.controllerManager!.controllerState.buttonPlayStation) {
                     CFRunLoopStop(CFRunLoopGetMain())
                     break
-                }
+               }
             }
         }
         print("Stopping control thread...")
         waiter.leave()
+    }
+    
+    private func processMovement() -> Void {
+        
+    }
+    
+    private func processServo() -> Void {
+        
+    }
+    
+    private func processRequest() -> Void {
+        
     }
     
     func join() -> Void {
@@ -242,7 +247,27 @@ class BluetoothCommunication {
         write(data: command)
     }
     
-    fileprivate func waitForAcks() -> Void {
+    fileprivate func servo(amount: Int16) -> Void {
+        var command : [UInt8] = []
+        if (amount >= 0) {
+            command = format(request: 0, type: 2, dir: 0, duration: 0xF, value: UInt8(amount & 0xFF))
+        } else {
+            let posAmount = -amount
+            command = format(request: 0, type: 2, dir: 1, duration: 0xF, value: UInt8(posAmount & 0xFF))
+        }
+        command.append(0xAA)
+        write(data: command)
+    }
+    
+    fileprivate func distance() -> Void {
+        var request : [UInt8] = []
+        request = format(request: 1, type: 0, dir: 0, duration: 0, value: 0)
+        request.removeLast()
+        request.append(0xAA)
+        write(data: request)
+    }
+    
+    fileprivate func waitForAcks() {
         var done = false
         while (!done) {
             defer {
@@ -257,9 +282,17 @@ class BluetoothCommunication {
             }
             var recvAck = false
             var doneAck = false
+            contextInfo.response.removeAll()
             for msg in contextInfo.receivedData {
-                recvAck = recvAck || msg.contains() {$0 == 0x55}
-                doneAck = doneAck || msg.contains() {$0 == 0xAA}
+                for b in msg {
+                    if (b == 0x55) {
+                        recvAck = true
+                    } else if (b == 0xAA) {
+                        doneAck = true
+                    } else {
+                        contextInfo.response.append(b)
+                    }
+                }
             }
             done = recvAck && doneAck
             if (done) {
