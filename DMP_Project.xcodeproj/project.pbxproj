@@ -10,6 +10,7 @@
 		6312159E2B42E62900A496C3 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6312159D2B42E62900A496C3 /* main.swift */; };
 		631215A52B42FA5000A496C3 /* DeviceDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 631215A42B42FA5000A496C3 /* DeviceDiscovery.swift */; };
 		631215BA2B43134700A496C3 /* BluetoothComm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 631215B92B43134700A496C3 /* BluetoothComm.swift */; };
+		63BA63162B4424DE00F40FBC /* ControllerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63BA63152B4424DE00F40FBC /* ControllerManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -29,6 +30,7 @@
 		6312159D2B42E62900A496C3 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		631215A42B42FA5000A496C3 /* DeviceDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceDiscovery.swift; sourceTree = "<group>"; };
 		631215B92B43134700A496C3 /* BluetoothComm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothComm.swift; sourceTree = "<group>"; };
+		63BA63152B4424DE00F40FBC /* ControllerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -64,6 +66,7 @@
 				6312159D2B42E62900A496C3 /* main.swift */,
 				631215A42B42FA5000A496C3 /* DeviceDiscovery.swift */,
 				631215B92B43134700A496C3 /* BluetoothComm.swift */,
+				63BA63152B4424DE00F40FBC /* ControllerManager.swift */,
 			);
 			path = DMP_Project;
 			sourceTree = "<group>";
@@ -127,6 +130,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				631215BA2B43134700A496C3 /* BluetoothComm.swift in Sources */,
+				63BA63162B4424DE00F40FBC /* ControllerManager.swift in Sources */,
 				631215A52B42FA5000A496C3 /* DeviceDiscovery.swift in Sources */,
 				6312159E2B42E62900A496C3 /* main.swift in Sources */,
 			);

@@ -131,12 +131,14 @@ class BluetoothCommunication {
     private var channelDelegate : BluetoothRFCOMMDelegate! = nil
     private var writeSource : CFRunLoopSource! = nil
     private var writeContext : CFRunLoopSourceContext! = nil
+    fileprivate var controllerManager : ControllerManager! = nil
   
-    init(channel: IOBluetoothRFCOMMChannel) {
+    init(channel: IOBluetoothRFCOMMChannel, manager: ControllerManager?) {
         self.channel = channel
         self.thread = BluetoothControlThread(communication: self)
         self.contextInfo = BluetoothInfo(channel: channel)
         self.channelDelegate = BluetoothRFCOMMDelegate(contextInfo: contextInfo)
+        self.controllerManager = manager
     }
     
     private func getUnsafeMutablePointer<T> (to value: inout T) -> UnsafeMutableRawPointer! {

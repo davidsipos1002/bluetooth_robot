@@ -10,16 +10,21 @@ import IOBluetooth
 
 func main() -> Void
 {
+    print("Controller search timeout: ", terminator: "")
+    let timeout = Double(readLine()!)
+    print("Waiting for controller. Timeout is \(timeout!)s.")
+    let controllerManager = ControllerManager()
+    let controllerFound = controllerManager.waitForController(timeout!)
     print("Device name: ", terminator: "")
     let name = readLine()
     print("Search time: ", terminator: "")
-    let timeout = Int(readLine()!)
+    let btTimeout = Int(readLine()!)
     print("Baud rate: ", terminator: "")
     let baud = UInt32(readLine()!)
-    let discovery = DeviceDiscovery(deviceName: name!, searchTime: timeout!, baudRate: baud!, byteSize: 8, parity: kBluetoothRFCOMMParityTypeNoParity, stopBits: 1)
+    let discovery = DeviceDiscovery(deviceName: name!, searchTime: btTimeout!, baudRate: baud!, byteSize: 8, parity: kBluetoothRFCOMMParityTypeNoParity, stopBits: 1)
     let rfcommChannel = discovery.startDiscovery()
     if (rfcommChannel != nil) {
-        let communication = BluetoothCommunication(channel: rfcommChannel!)
+        let communication = BluetoothCommunication(channel: rfcommChannel!, manager: controllerFound ? controllerManager : nil)
         communication.start()
         CFRunLoopRun()
         communication.end()
