@@ -61,8 +61,18 @@ class ControllerManager {
     private var observer : ControllerConnectionObserver! = nil
     fileprivate var controller : GCController! = nil
     fileprivate var extendedController : GCExtendedGamepad! = nil
-    private(set) var controllerState = ControllerState()
+    private var mutex = NSLock()
+    private var _controllerState = ControllerState()
     private var timer : CFRunLoopTimer! = nil
+    var controllerState : ControllerState {
+        get {
+            var state : ControllerState! = nil
+            mutex.lock()
+            state = _controllerState
+            mutex.unlock()
+            return state!
+        }
+    }
     
     init() {
         self.observer = ControllerConnectionObserver(manager: self)
@@ -104,7 +114,7 @@ class ControllerManager {
             NotificationCenter.default.addObserver(observer!, selector: #selector(ControllerConnectionObserver.controllerDisconnected), name: NSNotification.Name.GCControllerDidDisconnect, object: nil)
             extendedController.valueChangedHandler = self.handleChange
             controller.playerIndex = .index1
-            setLightColor(red: 1, green: 0, blue: 0)
+            setLightColor(red: 0.5, green: 0, blue: 1)
             Thread.sleep(forTimeInterval: 1)
             if (extendedController is GCXboxGamepad) {
                 print("Controller not supported. Defaulting to CLI mode.")
@@ -121,41 +131,43 @@ class ControllerManager {
     }
     
     private func handleChange(gamepad: GCExtendedGamepad, element: GCControllerElement) -> Void {
-        controllerState.buttonX = gamepad.buttonA.isPressed
-        controllerState.buttonTriangle = gamepad.buttonY.isPressed
-        controllerState.buttonCircle = gamepad.buttonB.isPressed
-        controllerState.buttonSquare = gamepad.buttonX.isPressed
-        controllerState.buttonPlayStation = gamepad.buttonHome!.isPressed
-        controllerState.buttonPause = gamepad.buttonMenu.isPressed
-        controllerState.buttonShare = gamepad.buttonOptions!.isPressed
-        controllerState.dpadLeft = gamepad.dpad.left.isPressed
-        controllerState.dpadRight = gamepad.dpad.right.isPressed
-        controllerState.dpadUp = gamepad.dpad.up.isPressed
-        controllerState.dpadDown = gamepad.dpad.down.isPressed
-        controllerState.leftShoulder = gamepad.leftShoulder.isPressed
-        controllerState.leftTrigger = gamepad.leftTrigger.value
-        controllerState.rightShoulder = gamepad.rightShoulder.isPressed
-        controllerState.rightTrigger = gamepad.rightTrigger.value
-        controllerState.buttonLeftThumbstick = gamepad.leftThumbstickButton!.isPressed
-        controllerState.leftThumbstick.x = gamepad.leftThumbstick.xAxis.value
-        controllerState.leftThumbstick.y = gamepad.leftThumbstick.yAxis.value
-        controllerState.buttonRightThumbstick = gamepad.rightThumbstickButton!.isPressed
-        controllerState.rightThumbstick.x = gamepad.rightThumbstick.xAxis.value
-        controllerState.rightThumbstick.y = gamepad.rightThumbstick.yAxis.value
+        mutex.lock()
+        _controllerState.buttonX = gamepad.buttonA.isPressed
+        _controllerState.buttonTriangle = gamepad.buttonY.isPressed
+        _controllerState.buttonCircle = gamepad.buttonB.isPressed
+        _controllerState.buttonSquare = gamepad.buttonX.isPressed
+        _controllerState.buttonPlayStation = gamepad.buttonHome!.isPressed
+        _controllerState.buttonPause = gamepad.buttonMenu.isPressed
+        _controllerState.buttonShare = gamepad.buttonOptions!.isPressed
+        _controllerState.dpadLeft = gamepad.dpad.left.isPressed
+        _controllerState.dpadRight = gamepad.dpad.right.isPressed
+        _controllerState.dpadUp = gamepad.dpad.up.isPressed
+        _controllerState.dpadDown = gamepad.dpad.down.isPressed
+        _controllerState.leftShoulder = gamepad.leftShoulder.isPressed
+        _controllerState.leftTrigger = gamepad.leftTrigger.value
+        _controllerState.rightShoulder = gamepad.rightShoulder.isPressed
+        _controllerState.rightTrigger = gamepad.rightTrigger.value
+        _controllerState.buttonLeftThumbstick = gamepad.leftThumbstickButton!.isPressed
+        _controllerState.leftThumbstick.x = gamepad.leftThumbstick.xAxis.value
+        _controllerState.leftThumbstick.y = gamepad.leftThumbstick.yAxis.value
+        _controllerState.buttonRightThumbstick = gamepad.rightThumbstickButton!.isPressed
+        _controllerState.rightThumbstick.x = gamepad.rightThumbstick.xAxis.value
+        _controllerState.rightThumbstick.y = gamepad.rightThumbstick.yAxis.value
         if (gamepad is GCDualShockGamepad) {
             let dualShock = gamepad as! GCDualShockGamepad
-            controllerState.buttonTouchPad = dualShock.touchpadButton.isPressed
-            controllerState.touchPadPrimaryFinger.x = dualShock.touchpadPrimary.xAxis.value
-            controllerState.touchPadPrimaryFinger.y = dualShock.touchpadPrimary.yAxis.value
-            controllerState.touchPadSecondaryFinger.x = dualShock.touchpadSecondary.xAxis.value
-            controllerState.touchPadSecondaryFinger.y = dualShock.touchpadSecondary.yAxis.value
+            _controllerState.buttonTouchPad = dualShock.touchpadButton.isPressed
+            _controllerState.touchPadPrimaryFinger.x = dualShock.touchpadPrimary.xAxis.value
+            _controllerState.touchPadPrimaryFinger.y = dualShock.touchpadPrimary.yAxis.value
+            _controllerState.touchPadSecondaryFinger.x = dualShock.touchpadSecondary.xAxis.value
+            _controllerState.touchPadSecondaryFinger.y = dualShock.touchpadSecondary.yAxis.value
         } else {
             let dualSense = gamepad as! GCDualSenseGamepad
-            controllerState.buttonTouchPad = dualSense.touchpadButton.isPressed
-            controllerState.touchPadPrimaryFinger.x = dualSense.touchpadPrimary.xAxis.value
-            controllerState.touchPadPrimaryFinger.y = dualSense.touchpadPrimary.yAxis.value
-            controllerState.touchPadSecondaryFinger.x = dualSense.touchpadSecondary.xAxis.value
-            controllerState.touchPadSecondaryFinger.y = dualSense.touchpadSecondary.yAxis.value
+            _controllerState.buttonTouchPad = dualSense.touchpadButton.isPressed
+            _controllerState.touchPadPrimaryFinger.x = dualSense.touchpadPrimary.xAxis.value
+            _controllerState.touchPadPrimaryFinger.y = dualSense.touchpadPrimary.yAxis.value
+            _controllerState.touchPadSecondaryFinger.x = dualSense.touchpadSecondary.xAxis.value
+            _controllerState.touchPadSecondaryFinger.y = dualSense.touchpadSecondary.yAxis.value
         }
+        mutex.unlock()
     }
 }
