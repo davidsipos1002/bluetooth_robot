@@ -68,9 +68,31 @@ fileprivate class BluetoothRFCOMMDelegate: NSObject, IOBluetoothRFCOMMChannelDel
     }
 }
 
+fileprivate enum BluetoothControlMode : Int, CaseIterable {
+    case dpad = 0
+    case buttons = 1
+    case touchpad = 2
+    case stick = 3
+    
+    static func getString(from x: BluetoothControlMode) -> String {
+        switch x {
+        case .dpad:
+            "dpad + left trigger"
+        case .buttons:
+            "buttons + left trigger"
+        case .touchpad:
+            "touchpad"
+        case .stick:
+            "left stick"
+        }
+    }
+}
+
 fileprivate class BluetoothControlThread : Thread {
     private let waiter = DispatchGroup()
     private weak var communication : BluetoothCommunication!
+    private var controlMode : BluetoothControlMode! = BluetoothControlMode(rawValue: 0)
+    private var modeSet = false
     
     init(communication: BluetoothCommunication) {
         super.init()
@@ -83,9 +105,27 @@ fileprivate class BluetoothControlThread : Thread {
     }
     
     override func main() -> Void {
-    inloop: 
+        testConnection()
+    inloop:
         while(true) {
-            if (communication.controllerManager == nil) {
+            if let manager = communication.controllerManager {
+                if (manager.controllerState.buttonPlayStation) {
+                     CFRunLoopStop(CFRunLoopGetMain())
+                     break
+                }
+                if (manager.controllerState.buttonPause) {
+                    if (modeSet == false) {
+                        controlMode = BluetoothControlMode(rawValue: (controlMode!.rawValue + 1) % BluetoothControlMode.allCases.count)
+                        print("Current control mode: \(BluetoothControlMode.getString(from: controlMode))")
+                        modeSet = true
+                    }
+                } else {
+                    modeSet = false
+                }
+                processMovement(state: manager.controllerState, moveDuration: communication.moveDuration, maxSpeed: communication.maxSpeed)
+                processServo(state: manager.controllerState, maxDisplacement: communication.servoDisplacement)
+                processRequest(state: manager.controllerState)
+            } else {
                 let values = readLine()!.components(separatedBy: CharacterSet.whitespacesAndNewlines)
                 if (values.count == 0) {
                     continue
@@ -143,31 +183,125 @@ fileprivate class BluetoothControlThread : Thread {
                 default:
                     print("Unknown command!")
                 }
-            } else {
-               if (communication.controllerManager!.controllerState.buttonPlayStation) {
-                    CFRunLoopStop(CFRunLoopGetMain())
-                    break
-               }
             }
         }
         print("Stopping control thread...")
         waiter.leave()
     }
     
-    private func processMovement() -> Void {
-        
+    private func processMovement(state: ControllerState, moveDuration: UInt8, maxSpeed: UInt8) -> Void {
+        let leftTriggerSpeed = UInt8(state.leftTrigger * Float(maxSpeed))
+        switch controlMode {
+        case .dpad:
+            var dir : Direction? = nil
+            if (state.dpadUp) {
+                dir = .forward
+            } else if (state.dpadDown) {
+                dir = .backward
+            } else if (state.dpadLeft) {
+                dir = .left
+            } else if (state.dpadRight) {
+                dir = .right
+            }
+            if (dir != nil && leftTriggerSpeed > 0) {
+                communication.move(direction: dir!, duration: moveDuration, speed: leftTriggerSpeed)
+                communication.waitForAcks()
+            }
+        case .buttons:
+            var dir : Direction? = nil
+            if (state.buttonTriangle) {
+                dir = .forward
+            } else if (state.buttonX) {
+                dir = .backward
+            } else if (state.buttonSquare) {
+                dir = .left
+            } else if (state.buttonCircle) {
+                dir = .right
+            }
+            if (dir != nil && leftTriggerSpeed > 0) {
+                communication.move(direction: dir!, duration: moveDuration, speed: leftTriggerSpeed)
+                communication.waitForAcks()
+            }
+            break
+        case .touchpad:
+            var dir : Direction? = nil
+            var displacement : Float = 0
+            if (abs(state.touchPadPrimaryFinger.x) > displacement) {
+                displacement = abs(state.touchPadPrimaryFinger.x)
+                dir = state.touchPadPrimaryFinger.x < 0 ? .left : .right
+            }
+            if (abs(state.touchPadPrimaryFinger.y) > displacement) {
+                displacement = abs(state.touchPadPrimaryFinger.y)
+                dir = state.touchPadPrimaryFinger.y > 0 ? .forward : .backward
+            }
+            let speed = UInt8(displacement * Float(maxSpeed))
+            if (dir != nil && speed > 0) {
+                communication.move(direction: dir!, duration: moveDuration, speed: speed)
+                communication.waitForAcks()
+            }
+            break
+        case .stick:
+            var dir : Direction? = nil
+            var displacement : Float = 0
+            if (abs(state.leftThumbstick.x) > displacement) {
+                displacement = abs(state.leftThumbstick.x)
+                dir = state.leftThumbstick.x < 0 ? .left : .right
+            }
+            if (abs(state.leftThumbstick.y) > displacement) {
+                displacement = abs(state.leftThumbstick.y)
+                dir = state.leftThumbstick.y > 0 ? .forward : .backward
+            }
+            let speed = UInt8(displacement * Float(maxSpeed))
+            if (dir != nil && speed > 0) {
+                communication.move(direction: dir!, duration: moveDuration, speed: speed)
+                communication.waitForAcks()
+            }
+            break
+        case .none:
+            break
+        }
     }
     
-    private func processServo() -> Void {
-        
+    private func testConnection() {
+        print("Sending test ACK...")
+        var timer = CFRunLoopTimerCreate(kCFAllocatorDefault, Date().timeIntervalSinceReferenceDate + 15, 0, 0, 0, { timer, info in
+            print("Connection test failed. Exiting...")
+            CFRunLoopStop(CFRunLoopGetMain())
+        }, nil)
+        CFRunLoopAddTimer(CFRunLoopGetMain(), timer!, CFRunLoopMode.defaultMode)
+        communication.write(data: [0xAA])
+        communication.waitForResponse()
+        CFRunLoopRemoveTimer(CFRunLoopGetMain(), timer!, CFRunLoopMode.defaultMode)
+        timer = nil
+        print("Connection test succeeded")
     }
     
-    private func processRequest() -> Void {
-        
+    private func processServo(state: ControllerState, maxDisplacement: Int16) -> Void {
+        let amount = Int16(state.rightThumbstick.x * Float(maxDisplacement))
+        if (abs(amount) > 0) {
+            communication.servo(amount: amount)
+            communication.waitForAcks()
+        }
     }
     
-    func join() -> Void {
-        waiter.wait()
+    private func processRequest(state: ControllerState) -> Void {
+        if (state.buttonShare) {
+            communication.distance()
+            communication.waitForAcks()
+            let distance = communication.getReponseAsFloat()
+            if let d = distance {
+                print("Distance: \(d)")
+            } else {
+                print("Received invalid value")
+            }
+        }
+    }
+    
+    func join() -> Bool {
+        if (waiter.wait(timeout: DispatchTime.now() + DispatchTimeInterval.seconds(10)) == .timedOut) {
+            return false
+        }
+        return true
     }
 }
 
@@ -179,9 +313,15 @@ class BluetoothCommunication {
     private var writeSource : CFRunLoopSource! = nil
     private var writeContext : CFRunLoopSourceContext! = nil
     fileprivate var controllerManager : ControllerManager! = nil
+    fileprivate let moveDuration : UInt8
+    fileprivate let maxSpeed : UInt8
+    fileprivate let servoDisplacement : Int16
   
-    init(channel: IOBluetoothRFCOMMChannel, manager: ControllerManager?) {
+    init(channel: IOBluetoothRFCOMMChannel, manager: ControllerManager?, moveDuration: UInt8, maxSpeed: UInt8, servoDisplacement: Int16) {
         self.channel = channel
+        self.moveDuration = moveDuration
+        self.maxSpeed = maxSpeed
+        self.servoDisplacement = servoDisplacement
         self.thread = BluetoothControlThread(communication: self)
         self.contextInfo = BluetoothInfo(channel: channel)
         self.channelDelegate = BluetoothRFCOMMDelegate(contextInfo: contextInfo)
@@ -272,10 +412,10 @@ class BluetoothCommunication {
     fileprivate func servo(amount: Int16) -> Void {
         var command : [UInt8] = []
         if (amount >= 0) {
-            command = format(request: 0, type: 2, dir: 0, duration: 0xF, value: UInt8(amount & 0xFF))
+            command = format(request: 0, type: 2, dir: 1, duration: 0xF, value: UInt8(amount & 0xFF))
         } else {
             let posAmount = -amount
-            command = format(request: 0, type: 2, dir: 1, duration: 0xF, value: UInt8(posAmount & 0xFF))
+            command = format(request: 0, type: 2, dir: 0, duration: 0xF, value: UInt8(posAmount & 0xFF))
         }
         command.append(0xAA)
         write(data: command)
@@ -288,7 +428,7 @@ class BluetoothCommunication {
         request.append(0xAA)
         write(data: request)
     }
-    
+
     fileprivate func waitForAcks() -> Void {
         var done = false
         while (!done) {
@@ -338,7 +478,10 @@ class BluetoothCommunication {
     }
     
     func end() -> Void {
-        thread.join()
+        if (thread.join() == false) {
+            print("Could not join control thread. Cancelling...")
+            thread.cancel()
+        }
         CFRunLoopRemoveSource(CFRunLoopGetMain(), writeSource, CFRunLoopMode.defaultMode)
         writeSource = nil
         writeContext = nil

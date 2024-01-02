@@ -10,28 +10,32 @@ import IOBluetooth
 
 func main() -> Void
 {
-    print("Controller search timeout: ", terminator: "")
+    print("Controller search timeout (in seconds): ", terminator: "")
     let timeout = Int(readLine()!)
     print("Waiting for controller. Timeout is \(timeout!)s.")
     let controllerManager = ControllerManager()
     let controllerFound = controllerManager.waitForController(timeout!)
     print("Device name: ", terminator: "")
     let name = readLine()
-    print("Search time: ", terminator: "")
+    print("Search time (in seconds): ", terminator: "")
     let btTimeout = Int(readLine()!)
     print("Baud rate: ", terminator: "")
     let baud = UInt32(readLine()!)
+    print("Movement duration (max. 15): ", terminator: "")
+    let duration = UInt8(readLine()!)
+    print("Maximum speed (max. 255): ", terminator: "")
+    let maxSpeed = UInt8(readLine()!)
     let discovery = DeviceDiscovery(deviceName: name!, searchTime: btTimeout!, baudRate: baud!, byteSize: 8, parity: kBluetoothRFCOMMParityTypeNoParity, stopBits: 1)
     let rfcommChannel = discovery.startDiscovery()
     if (rfcommChannel != nil) {
-        let communication = BluetoothCommunication(channel: rfcommChannel!, manager: controllerFound ? controllerManager : nil)
+        let communication = BluetoothCommunication(channel: rfcommChannel!, manager: controllerFound ? controllerManager : nil, moveDuration: duration!, maxSpeed: maxSpeed!, servoDisplacement: 90)
         communication.start()
-        controllerManager.setLightColor(red: 0.36 , green: 0.6 , blue: 0)
+        controllerManager.setLightColor(red: 0 , green: 1, blue: 0)
         CFRunLoopRun()
         communication.end()
     }
     controllerManager.setLightColor(red: 0, green: 0, blue: 0)
-    print("Ending program...")
+    print("Exiting...")
 }
 
 main()

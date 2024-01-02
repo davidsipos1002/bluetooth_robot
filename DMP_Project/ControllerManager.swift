@@ -22,7 +22,7 @@ fileprivate class ControllerConnectionObserver {
     }
     
     @objc func controllerDisconnected(notification: NSNotification) -> Void {
-        print("Controller disconnected. Stopping program...")
+        print("Controller disconnected. Exiting...")
         exit(EXIT_FAILURE)
     }
 }
@@ -86,7 +86,7 @@ class ControllerManager {
         case .charging:
             "Charging"
         case .discharging:
-            "Discharing"
+            "Discharging"
         case .full:
             "Fully charged"
         @unknown default:
@@ -114,7 +114,7 @@ class ControllerManager {
             NotificationCenter.default.addObserver(observer!, selector: #selector(ControllerConnectionObserver.controllerDisconnected), name: NSNotification.Name.GCControllerDidDisconnect, object: nil)
             extendedController.valueChangedHandler = self.handleChange
             controller.playerIndex = .index1
-            setLightColor(red: 0.5, green: 0, blue: 1)
+            setLightColor(red: 1, green: 0, blue: 0)
             Thread.sleep(forTimeInterval: 1)
             if (extendedController is GCXboxGamepad) {
                 print("Controller not supported. Defaulting to CLI mode.")
