@@ -26,9 +26,11 @@ func main() -> Void
     if (rfcommChannel != nil) {
         let communication = BluetoothCommunication(channel: rfcommChannel!, manager: controllerFound ? controllerManager : nil)
         communication.start()
+        controllerManager.setLightColor(red: 0.36 , green: 0.6 , blue: 0)
         CFRunLoopRun()
         communication.end()
     }
+    controllerManager.setLightColor(red: 0, green: 0, blue: 0)
     print("Ending program...")
 }
 

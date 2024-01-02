@@ -79,40 +79,59 @@ fileprivate class BluetoothControlThread : Thread {
     override func main() -> Void {
     inloop: 
         while(true) {
-            let values = readLine()!.components(separatedBy: CharacterSet.whitespacesAndNewlines)
-            if (values.count == 0) {
-                continue
-            }
-            switch values[0] {
-            case "s":
-                CFRunLoopStop(CFRunLoopGetMain())
-                break inloop
-            case "rb":
-                communication.read()
-            case "rs":
-                communication.read(true)
-            case "Wb":
-                communication.waitForResponse()
-            case "Ws":
-                communication.waitForResponse(true)
-            case "wb":
-                let hexString = values[1].lowercased().replacing("0x", with: "")
-                communication.write(data: [UInt8(hexString, radix: 16)!])
-            case "ws":
-                communication.write(data: Array(values[1].utf8))
-            case "m":
-                if (values.count < 4) {
-                    print("Invalid move command!")
+            if (communication.controllerManager == nil) {
+                let values = readLine()!.components(separatedBy: CharacterSet.whitespacesAndNewlines)
+                if (values.count == 0) {
+                    continue
+                }
+                switch values[0] {
+                case "s":
+                    CFRunLoopStop(CFRunLoopGetMain())
+                    break inloop
+                case "rb":
+                    communication.read()
+                case "rs":
+                    communication.read(true)
+                case "Wb":
+                    communication.waitForResponse()
+                case "Ws":
+                    communication.waitForResponse(true)
+                case "wb":
+                    let hexString = values[1].lowercased().replacing("0x", with: "")
+                    communication.write(data: [UInt8(hexString, radix: 16)!])
+                case "ws":
+                    communication.write(data: Array(values[1].utf8))
+                case "m":
+                    if (values.count < 4) {
+                        print("Invalid move command!")
+                        break
+                    }
+                    let dir = Direction.convertToDirection(fromString: values[1])
+                    let duration = UInt8(values[2])
+                    let speed = UInt8(values[3])
+                    communication.move(direction: dir!, duration: duration!, speed: speed!)
+                    communication.waitForAcks()
+                    print("Command executed")
+                default:
+                    print("Unknown command!")
+                }
+            } else {
+                if (communication.controllerManager!.controllerState.buttonX) {
+                    communication.move(direction: Direction.backward, duration: 10, speed: 5)
+                    communication.waitForAcks()
+                } else if (communication.controllerManager!.controllerState.buttonTriangle) {
+                    communication.move(direction: Direction.forward, duration: 10, speed: 5)
+                    communication.waitForAcks()
+                } else if (communication.controllerManager!.controllerState.buttonSquare) {
+                    communication.move(direction: Direction.left, duration: 10, speed: 5)
+                    communication.waitForAcks()
+                } else if (communication.controllerManager!.controllerState.buttonCircle) {
+                    communication.move(direction: Direction.right, duration: 10, speed: 5)
+                    communication.waitForAcks()
+                } else if (communication.controllerManager!.controllerState.buttonPlayStation) {
+                    CFRunLoopStop(CFRunLoopGetMain())
                     break
                 }
-                let dir = Direction.convertToDirection(fromString: values[1])
-                let duration = UInt8(values[2])
-                let speed = UInt8(values[3])
-                communication.move(direction: dir!, duration: duration!, speed: speed!)
-                communication.waitForAcks()
-                print("Command executed")
-            default:
-                print("Unknown command!")
             }
         }
         print("Stopping control thread...")
