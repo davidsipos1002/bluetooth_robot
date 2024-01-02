@@ -116,17 +116,18 @@ fileprivate class BluetoothControlThread : Thread {
                     print("Unknown command!")
                 }
             } else {
+                var speed = UInt8(communication.controllerManager!.controllerState.leftTrigger * 255)
                 if (communication.controllerManager!.controllerState.buttonX) {
-                    communication.move(direction: Direction.backward, duration: 10, speed: 5)
+                    communication.move(direction: Direction.backward, duration: 10, speed: speed)
                     communication.waitForAcks()
                 } else if (communication.controllerManager!.controllerState.buttonTriangle) {
-                    communication.move(direction: Direction.forward, duration: 10, speed: 5)
+                    communication.move(direction: Direction.forward, duration: 10, speed: speed)
                     communication.waitForAcks()
                 } else if (communication.controllerManager!.controllerState.buttonSquare) {
-                    communication.move(direction: Direction.left, duration: 10, speed: 5)
+                    communication.move(direction: Direction.left, duration: 10, speed: speed)
                     communication.waitForAcks()
                 } else if (communication.controllerManager!.controllerState.buttonCircle) {
-                    communication.move(direction: Direction.right, duration: 10, speed: 5)
+                    communication.move(direction: Direction.right, duration: 10, speed: speed)
                     communication.waitForAcks()
                 } else if (communication.controllerManager!.controllerState.buttonPlayStation) {
                     CFRunLoopStop(CFRunLoopGetMain())

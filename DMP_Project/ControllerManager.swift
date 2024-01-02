@@ -79,7 +79,7 @@ class ControllerManager {
         GCController.shouldMonitorBackgroundEvents = true
     }
     
-    func batteryStateToString(_ state: GCDeviceBattery.State) -> String {
+    private func batteryStateToString(_ state: GCDeviceBattery.State) -> String {
         switch state {
         case .unknown:
             "Unknown"
