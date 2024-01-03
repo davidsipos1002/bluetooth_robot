@@ -95,6 +95,7 @@ fileprivate class BluetoothControlThread : Thread {
     private var modeSet = false
     private var requestSent = false
     private var resetSent = false
+    private var moveSent = false
     
     init(communication: BluetoothCommunication) {
         super.init()
@@ -115,11 +116,20 @@ fileprivate class BluetoothControlThread : Thread {
                      CFRunLoopStop(CFRunLoopGetMain())
                      break
                 }
+                
                 processSoftwareReset(state: manager.controllerState)
+                
                 if (resetSent) {
                     CFRunLoopStop(CFRunLoopGetMain())
                     break
                 }
+                
+                processMovement(state: manager.controllerState)
+                
+                processServo(state: manager.controllerState)
+               
+                processRequest(state: manager.controllerState)
+                
                 if (manager.controllerState.buttonPause) {
                     if (modeSet == false) {
                         controlMode = BluetoothControlMode(rawValue: (controlMode!.rawValue + 1) % BluetoothControlMode.allCases.count)
@@ -129,9 +139,6 @@ fileprivate class BluetoothControlThread : Thread {
                 } else {
                     modeSet = false
                 }
-                processMovement(state: manager.controllerState, moveDuration: communication.moveDuration, maxSpeed: communication.maxSpeed)
-                processServo(state: manager.controllerState, maxDisplacement: communication.servoDisplacement)
-                processRequest(state: manager.controllerState)
             } else {
                 let values = readLine()!.components(separatedBy: CharacterSet.whitespacesAndNewlines)
                 if (values.count == 0) {
@@ -155,21 +162,20 @@ fileprivate class BluetoothControlThread : Thread {
                 case "ws":
                     communication.write(data: Array(values[1].utf8))
                 case "m":
-                    if (values.count < 4) {
+                    if (values.count < 3) {
                         print("Invalid move command!")
                         break
                     }
                     let dir = Direction.convertToDirection(fromString: values[1])
-                    let duration = UInt8(values[2])
-                    let speed = UInt8(values[3])
-                    communication.move(direction: dir!, duration: duration!, speed: speed!)
+                    let speed = Float(values[2])
+                    communication.move(direction: dir!, speed: speed!)
                     communication.waitForAcks()
                     print("Command executed")
                 case "sr":
                     if (values.count < 2) {
                         print("Invalid servo command")
                     }
-                    let amount = Int16(values[1])
+                    let amount = Float(values[1])
                     if (amount == nil) {
                         print("Invalid amount")
                         break
@@ -218,8 +224,7 @@ fileprivate class BluetoothControlThread : Thread {
         }
     }
     
-    private func processMovement(state: ControllerState, moveDuration: UInt8, maxSpeed: UInt8) -> Void {
-        let leftTriggerSpeed = UInt8(state.leftTrigger * Float(maxSpeed))
+    private func processMovement(state: ControllerState) -> Void {
         switch controlMode {
         case .dpad:
             var dir : Direction? = nil
@@ -232,9 +237,14 @@ fileprivate class BluetoothControlThread : Thread {
             } else if (state.dpadRight) {
                 dir = .right
             }
-            if (dir != nil && leftTriggerSpeed > 0) {
-                communication.move(direction: dir!, duration: moveDuration, speed: leftTriggerSpeed)
+            if (dir != nil && state.leftTrigger > 0) {
+                communication.move(direction: dir!, speed: state.leftTrigger)
                 communication.waitForAcks()
+                moveSent = true
+            } else if (moveSent == true) {
+                communication.move(direction: .forward, speed: 0)
+                communication.waitForAcks()
+                moveSent = false
             }
         case .buttons:
             var dir : Direction? = nil
@@ -247,11 +257,15 @@ fileprivate class BluetoothControlThread : Thread {
             } else if (state.buttonCircle) {
                 dir = .right
             }
-            if (dir != nil && leftTriggerSpeed > 0) {
-                communication.move(direction: dir!, duration: moveDuration, speed: leftTriggerSpeed)
+            if (dir != nil) {
+                communication.move(direction: dir!, speed: state.leftTrigger)
                 communication.waitForAcks()
+                moveSent = true
+            } else if (moveSent == true) {
+                communication.move(direction: .forward, speed: 0)
+                communication.waitForAcks()
+                moveSent = false
             }
-            break
         case .touchpad:
             var dir : Direction? = nil
             var displacement : Float = 0
@@ -263,12 +277,15 @@ fileprivate class BluetoothControlThread : Thread {
                 displacement = abs(state.touchPadPrimaryFinger.y)
                 dir = state.touchPadPrimaryFinger.y > 0 ? .forward : .backward
             }
-            let speed = UInt8(displacement * Float(maxSpeed))
-            if (dir != nil && speed > 0) {
-                communication.move(direction: dir!, duration: moveDuration, speed: speed)
+            if (dir != nil) {
+                communication.move(direction: dir!, speed: displacement)
                 communication.waitForAcks()
+                moveSent = true
+            } else if (moveSent == true) {
+                communication.move(direction: .forward, speed: 0)
+                communication.waitForAcks()
+                moveSent = false
             }
-            break
         case .stick:
             var dir : Direction? = nil
             var displacement : Float = 0
@@ -280,19 +297,22 @@ fileprivate class BluetoothControlThread : Thread {
                 displacement = abs(state.leftThumbstick.y)
                 dir = state.leftThumbstick.y > 0 ? .forward : .backward
             }
-            let speed = UInt8(displacement * Float(maxSpeed))
-            if (dir != nil && speed > 0) {
-                communication.move(direction: dir!, duration: moveDuration, speed: speed)
+            if (dir != nil) {
+                communication.move(direction: dir!, speed: displacement)
                 communication.waitForAcks()
+                moveSent = true
+            } else if (moveSent == true) {
+                communication.move(direction: .forward, speed: 0)
+                communication.waitForAcks()
+                moveSent = false
             }
-            break
         case .none:
             break
         }
     }
     
-    private func processServo(state: ControllerState, maxDisplacement: Int16) -> Void {
-        let amount = Int16(state.rightThumbstick.x * Float(maxDisplacement))
+    private func processServo(state: ControllerState) -> Void {
+        let amount = state.rightThumbstick.x
         if (abs(amount) > 0) {
             communication.servo(amount: amount)
             communication.waitForAcks()
@@ -333,15 +353,18 @@ class BluetoothCommunication {
     private var writeSource : CFRunLoopSource! = nil
     private var writeContext : CFRunLoopSourceContext! = nil
     fileprivate var controllerManager : ControllerManager! = nil
-    fileprivate let moveDuration : UInt8
+    fileprivate var minSpeed : UInt8
     fileprivate let maxSpeed : UInt8
-    fileprivate let servoDisplacement : Int16
+    fileprivate let minServoDisplacement : Int16
+    fileprivate let maxServoDisplacement : Int16
+
   
-    init(channel: IOBluetoothRFCOMMChannel, manager: ControllerManager?, moveDuration: UInt8, maxSpeed: UInt8, servoDisplacement: Int16) {
+    init(channel: IOBluetoothRFCOMMChannel, manager: ControllerManager?, minSpeed: UInt8, maxSpeed: UInt8, minServoDisplacement: Int16, maxServoDisplacement: Int16) {
         self.channel = channel
-        self.moveDuration = moveDuration
+        self.minSpeed = minSpeed
         self.maxSpeed = maxSpeed
-        self.servoDisplacement = servoDisplacement
+        self.minServoDisplacement = minServoDisplacement
+        self.maxServoDisplacement = maxServoDisplacement
         self.thread = BluetoothControlThread(communication: self)
         self.contextInfo = BluetoothInfo(channel: channel)
         self.channelDelegate = BluetoothRFCOMMDelegate(contextInfo: contextInfo)
@@ -404,38 +427,45 @@ class BluetoothCommunication {
         contextInfo.mutex.unlock()
     }
     
-    private func format(request: UInt8, type: UInt8, dir: UInt8, duration: UInt8, value: UInt8) -> [UInt8] {
+    private func format(request: UInt8, type: UInt8, dir: UInt8,value: UInt8) -> [UInt8] {
         var controlByte : UInt8 = 0
         controlByte |= request << 7
         controlByte |= type << 5
         controlByte |= dir << 4
-        controlByte |= duration & 0x0F
         return [controlByte, value]
     }
     
-    fileprivate func move(direction: Direction, duration: UInt8, speed: UInt8) -> Void {
+    fileprivate func move(direction: Direction, speed: Float) -> Void {
         var command : [UInt8] = []
+        var finalSpeed : UInt8 = 0
+        if (speed > 0) {
+            finalSpeed = UInt8(Float(minSpeed) * (1 - speed) + Float(maxSpeed) * speed)
+        }
         switch direction {
         case .forward:
-            command = format(request: 0, type: 0, dir: 0, duration: duration, value: speed)
+            command = format(request: 0, type: 0, dir: 0, value: finalSpeed)
         case .backward:
-            command = format(request: 0, type: 0, dir: 1, duration: duration, value: speed)
+            command = format(request: 0, type: 0, dir: 1, value: finalSpeed)
         case .left:
-            command = format(request: 0, type: 1, dir: 0, duration: duration, value: speed)
+            command = format(request: 0, type: 1, dir: 0, value: finalSpeed)
         case .right:
-            command = format(request: 0, type: 1, dir: 1, duration: duration, value: speed)
+            command = format(request: 0, type: 1, dir: 1, value: finalSpeed)
         }
         command.append(0xAA)
         write(data: command)
     }
     
-    fileprivate func servo(amount: Int16) -> Void {
+    fileprivate func servo(amount: Float) -> Void {
         var command : [UInt8] = []
+        var finalAmount : UInt8 = 0
+        let posAmount = abs(amount)
+        if (posAmount > 0) {
+            finalAmount = UInt8(Float(minServoDisplacement) * (1 - posAmount) + Float(maxServoDisplacement) * posAmount)
+        }
         if (amount >= 0) {
-            command = format(request: 0, type: 2, dir: 1, duration: 0xF, value: UInt8(amount & 0xFF))
+            command = format(request: 0, type: 2, dir: 1, value: finalAmount)
         } else {
-            let posAmount = -amount
-            command = format(request: 0, type: 2, dir: 0, duration: 0xF, value: UInt8(posAmount & 0xFF))
+            command = format(request: 0, type: 2, dir: 0, value: finalAmount)
         }
         command.append(0xAA)
         write(data: command)
@@ -443,7 +473,7 @@ class BluetoothCommunication {
     
     fileprivate func distance() -> Void {
         var request : [UInt8] = []
-        request = format(request: 1, type: 0, dir: 0, duration: 0, value: 0)
+        request = format(request: 1, type: 0, dir: 0, value: 0)
         request.removeLast()
         request.append(0xAA)
         write(data: request)
@@ -481,6 +511,7 @@ class BluetoothCommunication {
                 contextInfo.receivedData.removeAll()
             }
         }
+        print("ACK_DONE")
     }
     
     fileprivate func getReponseAsFloat() -> Float? {
