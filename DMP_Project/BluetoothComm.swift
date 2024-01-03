@@ -28,6 +28,19 @@ fileprivate enum Direction {
             return nil
         }
     }
+    
+    static func getString(fromDirection dir: Direction) -> String {
+        switch dir {
+        case .forward:
+            "forward"
+        case .backward:
+            "backward"
+        case .left:
+            "left"
+        case .right:
+            "right"
+        }
+    }
 }
 
 fileprivate class BluetoothInfo {
@@ -94,7 +107,6 @@ fileprivate class BluetoothControlThread : Thread {
     private var controlMode : BluetoothControlMode! = BluetoothControlMode(rawValue: 0)
     private var modeSet = false
     private var requestSent = false
-    private var resetSent = false
     private var moveSent = false
     
     init(communication: BluetoothCommunication) {
@@ -116,14 +128,7 @@ fileprivate class BluetoothControlThread : Thread {
                      CFRunLoopStop(CFRunLoopGetMain())
                      break
                 }
-                
-                processSoftwareReset(state: manager.controllerState)
-                
-                if (resetSent) {
-                    CFRunLoopStop(CFRunLoopGetMain())
-                    break
-                }
-                
+
                 processMovement(state: manager.controllerState)
                 
                 processServo(state: manager.controllerState)
@@ -214,14 +219,6 @@ fileprivate class BluetoothControlThread : Thread {
         CFRunLoopRemoveTimer(CFRunLoopGetMain(), timer!, CFRunLoopMode.defaultMode)
         timer = nil
         print("Connection test succeeded")
-    }
-    
-    private func processSoftwareReset(state: ControllerState) -> Void {
-        if (state.leftShoulder && state.rightShoulder && resetSent == false) {
-            print("Resetting...")
-            communication.write(data: [0x00, 0x00, 0x00, 0xAA])
-            resetSent = true
-        }
     }
     
     private func processMovement(state: ControllerState) -> Void {
@@ -326,7 +323,7 @@ fileprivate class BluetoothControlThread : Thread {
                 communication.waitForAcks()
                 let distance = communication.getReponseAsFloat()
                 if let d = distance {
-                    print("Distance: \(d)")
+                    print("Distance: \(d)cm")
                 } else {
                     print("Received invalid value")
                 }
@@ -452,6 +449,7 @@ class BluetoothCommunication {
             command = format(request: 0, type: 1, dir: 1, value: finalSpeed)
         }
         command.append(0xAA)
+        print("Sending move \(Direction.getString(fromDirection: direction)) as \(command)...")
         write(data: command)
     }
     
@@ -476,6 +474,7 @@ class BluetoothCommunication {
         request = format(request: 1, type: 0, dir: 0, value: 0)
         request.removeLast()
         request.append(0xAA)
+        print("Requesting distance as \(request)...")
         write(data: request)
     }
 
@@ -511,7 +510,7 @@ class BluetoothCommunication {
                 contextInfo.receivedData.removeAll()
             }
         }
-        print("ACK_DONE")
+        print("ACK")
     }
     
     fileprivate func getReponseAsFloat() -> Float? {
