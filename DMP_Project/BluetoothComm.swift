@@ -93,6 +93,7 @@ fileprivate class BluetoothControlThread : Thread {
     private weak var communication : BluetoothCommunication!
     private var controlMode : BluetoothControlMode! = BluetoothControlMode(rawValue: 0)
     private var modeSet = false
+    private var requestSent = false
     
     init(communication: BluetoothCommunication) {
         super.init()
@@ -286,14 +287,19 @@ fileprivate class BluetoothControlThread : Thread {
     
     private func processRequest(state: ControllerState) -> Void {
         if (state.buttonShare) {
-            communication.distance()
-            communication.waitForAcks()
-            let distance = communication.getReponseAsFloat()
-            if let d = distance {
-                print("Distance: \(d)")
-            } else {
-                print("Received invalid value")
+            if (requestSent == false) {
+                communication.distance()
+                communication.waitForAcks()
+                let distance = communication.getReponseAsFloat()
+                if let d = distance {
+                    print("Distance: \(d)")
+                } else {
+                    print("Received invalid value")
+                }
+                requestSent = true
             }
+        } else {
+            requestSent = false
         }
     }
     
