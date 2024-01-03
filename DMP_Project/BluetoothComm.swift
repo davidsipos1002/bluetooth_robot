@@ -94,6 +94,7 @@ fileprivate class BluetoothControlThread : Thread {
     private var controlMode : BluetoothControlMode! = BluetoothControlMode(rawValue: 0)
     private var modeSet = false
     private var requestSent = false
+    private var resetSent = false
     
     init(communication: BluetoothCommunication) {
         super.init()
@@ -113,6 +114,11 @@ fileprivate class BluetoothControlThread : Thread {
                 if (manager.controllerState.buttonPlayStation) {
                      CFRunLoopStop(CFRunLoopGetMain())
                      break
+                }
+                processSoftwareReset(state: manager.controllerState)
+                if (resetSent) {
+                    CFRunLoopStop(CFRunLoopGetMain())
+                    break
                 }
                 if (manager.controllerState.buttonPause) {
                     if (modeSet == false) {
@@ -190,6 +196,28 @@ fileprivate class BluetoothControlThread : Thread {
         waiter.leave()
     }
     
+    private func testConnection() {
+        print("Sending test ACK...")
+        var timer = CFRunLoopTimerCreate(kCFAllocatorDefault, Date().timeIntervalSinceReferenceDate + 15, 0, 0, 0, { timer, info in
+            print("Connection test failed. Exiting...")
+            CFRunLoopStop(CFRunLoopGetMain())
+        }, nil)
+        CFRunLoopAddTimer(CFRunLoopGetMain(), timer!, CFRunLoopMode.defaultMode)
+        communication.write(data: [0xAA])
+        communication.waitForResponse()
+        CFRunLoopRemoveTimer(CFRunLoopGetMain(), timer!, CFRunLoopMode.defaultMode)
+        timer = nil
+        print("Connection test succeeded")
+    }
+    
+    private func processSoftwareReset(state: ControllerState) -> Void {
+        if (state.leftShoulder && state.rightShoulder && resetSent == false) {
+            print("Resetting...")
+            communication.write(data: [0x00, 0x00, 0x00, 0xAA])
+            resetSent = true
+        }
+    }
+    
     private func processMovement(state: ControllerState, moveDuration: UInt8, maxSpeed: UInt8) -> Void {
         let leftTriggerSpeed = UInt8(state.leftTrigger * Float(maxSpeed))
         switch controlMode {
@@ -261,20 +289,6 @@ fileprivate class BluetoothControlThread : Thread {
         case .none:
             break
         }
-    }
-    
-    private func testConnection() {
-        print("Sending test ACK...")
-        var timer = CFRunLoopTimerCreate(kCFAllocatorDefault, Date().timeIntervalSinceReferenceDate + 15, 0, 0, 0, { timer, info in
-            print("Connection test failed. Exiting...")
-            CFRunLoopStop(CFRunLoopGetMain())
-        }, nil)
-        CFRunLoopAddTimer(CFRunLoopGetMain(), timer!, CFRunLoopMode.defaultMode)
-        communication.write(data: [0xAA])
-        communication.waitForResponse()
-        CFRunLoopRemoveTimer(CFRunLoopGetMain(), timer!, CFRunLoopMode.defaultMode)
-        timer = nil
-        print("Connection test succeeded")
     }
     
     private func processServo(state: ControllerState, maxDisplacement: Int16) -> Void {
