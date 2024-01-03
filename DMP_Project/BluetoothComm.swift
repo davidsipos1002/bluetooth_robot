@@ -324,6 +324,7 @@ fileprivate class BluetoothControlThread : Thread {
                 let distance = communication.getReponseAsFloat()
                 if let d = distance {
                     print("Distance: \(d)cm")
+                    communication.controllerManager.playHaptics(fromDistance: d)
                 } else {
                     print("Received invalid value")
                 }

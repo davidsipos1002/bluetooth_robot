@@ -7,6 +7,7 @@
 
 import Foundation
 import GameController
+import CoreHaptics
 
 fileprivate class ControllerConnectionObserver {
     private weak var manager : ControllerManager! = nil
@@ -57,6 +58,17 @@ struct ControllerState {
     var touchPadSecondaryFinger : ControllerPosition =  ControllerPosition()
 }
 
+fileprivate class ControllerHaptics {
+    var hapticMutex = NSCondition()
+    var hapticsState = 0
+    var hapticSourceContext : CFRunLoopSourceContext! = nil
+    var hapticSource : CFRunLoopSource! = nil
+    var hapticEngine : CHHapticEngine! = nil
+    var endHapticsSourceContext : CFRunLoopSourceContext! = nil
+    var endHapticsSource : CFRunLoopSource! = nil
+    var distance : Float = 0
+}
+
 class ControllerManager {
     private var observer : ControllerConnectionObserver! = nil
     fileprivate var controller : GCController! = nil
@@ -64,6 +76,7 @@ class ControllerManager {
     private var mutex = NSLock()
     private var _controllerState = ControllerState()
     private var timer : CFRunLoopTimer! = nil
+    private var haptics = ControllerHaptics()
     var controllerState : ControllerState {
         get {
             var state : ControllerState! = nil
@@ -77,6 +90,15 @@ class ControllerManager {
     init() {
         self.observer = ControllerConnectionObserver(manager: self)
         GCController.shouldMonitorBackgroundEvents = true
+    }
+    
+    deinit {
+        CFRunLoopRemoveSource(CFRunLoopGetCurrent(), haptics.hapticSource, CFRunLoopMode.defaultMode)
+        CFRunLoopRemoveSource(CFRunLoopGetCurrent(), haptics.endHapticsSource, CFRunLoopMode.defaultMode)
+        haptics.hapticSourceContext = nil
+        haptics.hapticSource = nil
+        haptics.endHapticsSourceContext = nil
+        haptics.endHapticsSource = nil
     }
     
     private func batteryStateToString(_ state: GCDeviceBattery.State) -> String {
@@ -101,6 +123,61 @@ class ControllerManager {
         CFRunLoopAddTimer(CFRunLoopGetCurrent(), timer, CFRunLoopMode.defaultMode)
     }
     
+    private func getUnsafeMutablePointer<T> (to value: inout T) -> UnsafeMutableRawPointer! {
+        withUnsafeMutablePointer(to: &value) {UnsafeMutableRawPointer($0)}
+    }
+    
+    private func prepareHaptics() -> Void {
+        haptics.hapticEngine = controller.haptics!.createEngine(withLocality: .default)
+        
+        haptics.hapticSourceContext = CFRunLoopSourceContext(version: 0, info: getUnsafeMutablePointer(to: &haptics), retain: nil, release: nil, copyDescription: nil, equal: nil, hash: nil, schedule: nil, cancel: nil) { info in
+            let controllerHaptics = (info?.bindMemory(to: ControllerHaptics.self, capacity: 1).pointee)!
+            var safeDistance : Float = 500.0
+            controllerHaptics.hapticMutex.lock()
+            safeDistance = controllerHaptics.distance
+            controllerHaptics.hapticMutex.unlock()
+            let events = ControllerManager.getHapticEvents(fromDistance: safeDistance)
+            if (events.0 == true) {
+                do {
+                    let pattern = try CHHapticPattern(events: events.1, parameters: [])
+                    let player = try controllerHaptics.hapticEngine.makePlayer(with: pattern)
+                    controllerHaptics.hapticMutex.lock()
+                    controllerHaptics.hapticsState = 1
+                    controllerHaptics.hapticMutex.signal()
+                    controllerHaptics.hapticMutex.unlock()
+                    try player.start(atTime: CHHapticTimeImmediate)
+                    controllerHaptics.hapticEngine.notifyWhenPlayersFinished() { _ in
+                        CFRunLoopSourceSignal(controllerHaptics.endHapticsSource)
+                        return .leaveEngineRunning
+                    }
+                } catch {
+                    print("Cannot start haptic player.")
+                    controllerHaptics.hapticMutex.lock()
+                    controllerHaptics.hapticsState = -1
+                    controllerHaptics.hapticMutex.signal()
+                    controllerHaptics.hapticMutex.unlock()
+                }
+            }
+        }
+        haptics.hapticSource = CFRunLoopSourceCreate(kCFAllocatorDefault, 0, &haptics.hapticSourceContext)
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), haptics.hapticSource, CFRunLoopMode.defaultMode)
+        
+        haptics.endHapticsSourceContext = CFRunLoopSourceContext(version: 0, info: getUnsafeMutablePointer(to: &haptics), retain: nil, release: nil, copyDescription: nil, equal: nil, hash: nil, schedule: nil, cancel: nil) { info in
+                let controllerHaptics = (info?.bindMemory(to: ControllerHaptics.self, capacity: 1).pointee)!
+                controllerHaptics.hapticMutex.lock()
+                controllerHaptics.hapticsState = 2
+                controllerHaptics.hapticMutex.signal()
+                controllerHaptics.hapticMutex.unlock()
+        }
+        haptics.endHapticsSource = CFRunLoopSourceCreate(kCFAllocatorDefault, 0, &haptics.endHapticsSourceContext)
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), haptics.endHapticsSource, CFRunLoopMode.defaultMode)
+        do {
+            try haptics.hapticEngine.start()
+        } catch {
+            print("Cannot start haptic engine.")
+        }
+    }
+    
     func waitForController(_ timeout: Int) -> Bool {
         NotificationCenter.default.addObserver(observer!, selector: #selector(ControllerConnectionObserver.controllerConnected), name: NSNotification.Name.GCControllerDidConnect, object: nil)
         setTimeoutTimer(Double(timeout))
@@ -121,9 +198,24 @@ class ControllerManager {
                 return false
             }
             print("Controller connected. Battery level: \(controller.battery!.batteryLevel * 100.0). Battery state: \(batteryStateToString(controller.battery!.batteryState))")
+            prepareHaptics()
             return true
         }
         return false
+    }
+    
+    func playHaptics(fromDistance distance: Float) -> Void {
+        haptics.hapticMutex.lock()
+        haptics.distance = distance
+        haptics.hapticsState = 0
+        haptics.hapticMutex.unlock()
+        CFRunLoopSourceSignal(haptics.hapticSource)
+        CFRunLoopWakeUp(CFRunLoopGetMain())
+        haptics.hapticMutex.lock()
+        while (haptics.hapticsState != -1 && haptics.hapticsState != 2) {
+            haptics.hapticMutex.wait()
+        }
+        haptics.hapticMutex.unlock()
     }
     
     func setLightColor(red: Float, green: Float, blue: Float) -> Void {
@@ -172,4 +264,41 @@ class ControllerManager {
         }
         mutex.unlock()
     }
+    
+    fileprivate class func getHapticEvents(fromDistance distance: Float) -> (Bool, [CHHapticEvent]) {
+        // over 3m nothing
+        // between 1m and 3m long
+        // between 0.5m and 1m long long
+        // between 10cm 50cm short
+        // below 10cm short short
+        let eventParameters = [
+            CHHapticEventParameter(parameterID: .hapticIntensity, value: 1),
+            CHHapticEventParameter(parameterID: .hapticSharpness, value: 1)
+        ]
+        if (distance > 300) {
+            return (false, [])
+        }
+        else if (distance > 100) {
+            return (true, [
+                CHHapticEvent(eventType: .hapticContinuous, parameters: eventParameters, relativeTime: 0, duration: 0.5)
+            ])
+        }
+        else if (distance > 50) {
+            return (true, [
+                CHHapticEvent(eventType: .hapticContinuous, parameters: eventParameters, relativeTime: 0, duration: 0.5),
+                CHHapticEvent(eventType: .hapticContinuous, parameters: eventParameters, relativeTime: 1, duration: 0.5)
+            ])
+        } else if (distance > 10) {
+            return (true, [
+                CHHapticEvent(eventType: .hapticTransient, parameters: eventParameters, relativeTime: 0, duration: 0.5)
+            ])
+        } else {
+            return (true, [
+                CHHapticEvent(eventType: .hapticTransient, parameters: eventParameters, relativeTime: 0),
+                CHHapticEvent(eventType: .hapticTransient, parameters: eventParameters, relativeTime: 0.5)
+            ])
+        }
+    }
+    
+    
 }
